@@ -31,6 +31,10 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 
+/* Return values (Error codes) */
+#define NO_ERROR            (0)
+#define ERR_INVALID_INPUT   (1)
+
 using namespace std;
 
 int main(int argc, char** argv)
@@ -40,7 +44,7 @@ int main(int argc, char** argv)
     {
         cout << "Invalid usage." << endl;
         cout << "bgenerals.exe [total number of generals] [traitor generals]" << endl;
-        return 1;
+        return ERR_INVALID_INPUT;
     }
 
     /* Use input from the console to determine:
@@ -71,5 +75,5 @@ int main(int argc, char** argv)
     /* Spin off traitor general threads. */
 
 
-    return 0;
+    return NO_ERROR;
 }
