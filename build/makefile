@@ -10,8 +10,8 @@ SHELL = /bin/sh
 
 # Paths
 prefix = ..
-srcdir = $(prefix)/src
-objdir = $(prefix)/obj
+srcdir = $(prefix)/src/
+objdir = $(prefix)/obj/
 boost_lib_dir = /usr/include/boost-1_33_1 
 
 # Compiler related
@@ -22,17 +22,17 @@ CFLAGS  = $(CDEBUG) -I$(srcdir) -I$(boost_lib_dir) $(DEFS) -Wall
 LDFLAGS  = -g
 
 # List of source files (including paths)
-SOURCES = 	$(srcdir)/main.cpp \
-			$(srcdir)/bgeneralthread.cpp
+SRCS =	$(srcdir)main.cpp \
+		$(srcdir)bgeneralthread.cpp
 
 # Replace the path in the source file listing with a separate directory for objects
-OBJECTS = $(addprefix $(objdir)/, $(notdir $(SOURCES:.cpp=.o))) 
+OBJS = $(addprefix $(objdir), $(notdir $(SRCS:.cpp=.o))) 
 
 LIBS = 
 
 
-# Binary target name
-EXECUTABLE = bgenerals.exe
+# Binary target name (name of exe we're trying to build)
+TARGET = bgenerals.exe
 
 
 # Targets
@@ -40,35 +40,48 @@ EXECUTABLE = bgenerals.exe
 # Phony is good practice to keep target rules working despite poorly named file creations 
 # http://www.gnu.org/software/make/manual/make.html#Phony-Targets
 .PHONY: all
-all: $(EXECUTABLE) TAGS
+all: $(TARGET) TAGS
 
-# Automatic variables used http://www.gnu.org/software/make/manual/make.html#Automatic-Variables
-# $@ file name of the target of the rule
-# $% target member name
-# $< name of the first prereq
+# In order to build $(TARGET), we first build each of the $(OBJS).
+# Then we use the given command to link those $(OBJS) into our
+# $(TARGET) executable.  $^ is a shortcut for $(OBJS).  $@ is a
+# shortcut for $(TARGET).
 #
-$(EXECUTABLE): $(OBJECTS)
+# The default compile rule will compile each of the $(OBJS) for us.
+$(TARGET): $(OBJS)
 	@echo "============="
 	@echo "Linking the target $@"
-	@echo "============="
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 # Simple brute force rule to build obj/*.o based on their src/*.cpp counterparts
-.PHONY: $(objdir)/%.o
-$(objdir)/%.o: $(srcdir)/%.cpp
+.PHONY: $(objdir)%.o
+$(objdir)%.o: $(srcdir)%.cpp
 	@mkdir -p $(dir $@)
 	@echo "============="
 	@echo "Compiling $<"
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # Do not add phony rule, we want TAGS to be checked to save a little build time.
-TAGS: $(SOURCES)
+TAGS: $(SRCS)
 	@echo "============="
 	@echo "Creating TAGS"
-	@echo "============="
-	etags $(SOURCES)
+	etags $(SRCS)
 
+# Use "make clean" to remove all of the support files.
 .PHONY: clean
 clean:
-	rm -f $(OBJECTS) $(EXECUTABLE) TAGS
+	rm -f $(OBJS) $(TARGET) TAGS Makefile.depend
+
+# This automatically uses the 'makedepend' utility to add any
+# dependencies that our source files have, namely .h files.  This way,
+# if the .h files change, the code will be re-compiled.
+# <http://stackoverflow.com/questions/1500715/gnu-makefile-handling-dependencies>
+# makedepend generates the dependency list, perl regexp magic prepends Makefile.depend and 
+# corrects the paths to the .o files since we house them in a separate directory.
+-include Makefile.depend
+Makefile.depend: $(SRCS)
+	@echo "============="
+	@echo "Creating Makefile.depend"
+	makedepend -f- $(SRCS) 2> /dev/null | \
+	perl -p -e "s/^(.*)\/(.*\.o:.*)/Makefile.depend $(subst /,\/,$(objdir))\2/" > Makefile.depend
 
