@@ -12,22 +12,29 @@ SHELL = /bin/sh
 prefix = ..
 srcdir = $(prefix)/src
 objdir = $(prefix)/obj
-VPATH = $(srcdir)
+boost_lib_dir = /usr/include/boost-1_33_1 
 
 # Compiler related
 CC      = g++
 CDEBUG = -g
 DEFS =  
-CFLAGS  = $(CDEBUG) -I$(srcdir) $(DEFS) -Wall
+CFLAGS  = $(CDEBUG) -I$(srcdir) -I$(boost_lib_dir) $(DEFS) -Wall
 LDFLAGS  = -g
 
-SOURCES = main.cpp
+# List of source files (including paths)
+SOURCES = $(srcdir)/main.cpp
+
+# Take the path to each of the source files, and append $(objdir) to it.  In this way,
+# if we have source files organized into multiple src/ folders, the ../obj/ folders will 
+# contain the .o files.
 OBJECTS = $(join $(addsuffix $(objdir)/, $(dir $(SOURCES))), $(notdir $(SOURCES:.cpp=.o))) 
 LIBS = 
-SOURCES_FULL_PATH = $(join $(addsuffix $(srcdir)/, $(dir $(SOURCES))), $(notdir $(SOURCES))) 
 
 # Binary target name
-EXECUTABLE = bgenerals
+EXECUTABLE = bgenerals.exe
+
+# TAGS output
+TAGS_OUTPUT = $(srcdir)/TAGS
 
 
 # Targets
@@ -48,22 +55,22 @@ $(EXECUTABLE): $(OBJECTS)
 	@echo "============="
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 
-.PHONY: $(objdir)/%.o
-$(objdir)/%.o: %.cpp
+.PHONY: $(OBJECTS)
+$(OBJECTS): $(SOURCES)
 	@mkdir -p $(dir $@)
 	@echo "============="
 	@echo "Compiling $<"
 	$(CC) $(CFLAGS) -c $< -o $@
 
-TAGS: $(SOURCES_FULL_PATH)
+TAGS: $(SOURCES)
 	@echo "============="
 	@echo "Creating TAGS"
 	@echo "============="
-	etags $(SOURCES_FULL_PATH)
+	etags -f $(TAGS_OUTPUT) $(SOURCES)
 
 # Leave TAGS out of clean, since we likely still want to use the last good 
 # tags build to help navigate src code.
 .PHONY: clean
 clean:
-	rm -f $(OBJECTS) $(EXECUTABLE)
+	rm -f $(OBJECTS) $(EXECUTABLE) $(TAGS_OUTPUT)
 
