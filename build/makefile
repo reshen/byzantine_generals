@@ -12,7 +12,7 @@ SHELL = /bin/sh
 prefix = ..
 srcdir = $(prefix)/src/
 objdir = $(prefix)/obj/
-boost_inc_dir = /usr/include/boost-1_33_1 
+boost_inc_dir = /usr/include/boost
 boost_lib_dir = /usr/lib
 
 # Compiler related
@@ -30,10 +30,10 @@ SRCS =	$(srcdir)main.cpp \
 OBJS = $(addprefix $(objdir), $(notdir $(SRCS:.cpp=.o))) 
 
 # Libraries used
-LIBS = -lboost_thread-gcc-mt
+LIBS = -lboost_thread-mt
 
 # Binary target name (name of exe we're trying to build)
-TARGET = bgenerals.exe
+TARGET = bgenerals
 
 
 # Targets
