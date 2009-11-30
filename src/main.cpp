@@ -28,8 +28,7 @@
 #include <iostream>
 #include <stdlib.h>
 
-#include <sys/types.h>
-#include <sys/socket.h>
+#include "bgeneralthread.h"
 
 /* Return values (Error codes) */
 #define NO_ERROR            (0)
@@ -46,6 +45,10 @@ int main(int argc, char** argv)
         cout << "bgenerals.exe [total number of generals] [traitor generals]" << endl;
         return ERR_INVALID_INPUT;
     }
+
+    bgeneralthread bt;
+
+    bt.start();
 
     /* Use input from the console to determine:
      * - the number of generals (n)
@@ -73,7 +76,6 @@ int main(int argc, char** argv)
     /* Spin off loyal general threads. */
 
     /* Spin off traitor general threads. */
-
 
     return NO_ERROR;
 }

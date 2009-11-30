@@ -12,14 +12,15 @@ SHELL = /bin/sh
 prefix = ..
 srcdir = $(prefix)/src/
 objdir = $(prefix)/obj/
-boost_lib_dir = /usr/include/boost-1_33_1 
+boost_inc_dir = /usr/include/boost-1_33_1 
+boost_lib_dir = /usr/lib
 
 # Compiler related
 CC      = g++
 CDEBUG = -g
 DEFS =  
-CFLAGS  = $(CDEBUG) -I$(srcdir) -I$(boost_lib_dir) $(DEFS) -Wall
-LDFLAGS  = -g
+CFLAGS  = $(CDEBUG) -I$(srcdir) -I$(boost_inc_dir) $(DEFS) -Wall
+LDFLAGS  = -g -L$(boost_lib_dir)
 
 # List of source files (including paths)
 SRCS =	$(srcdir)main.cpp \
@@ -28,8 +29,8 @@ SRCS =	$(srcdir)main.cpp \
 # Replace the path in the source file listing with a separate directory for objects
 OBJS = $(addprefix $(objdir), $(notdir $(SRCS:.cpp=.o))) 
 
-LIBS = 
-
+# Libraries used
+LIBS = -lboost_thread-gcc-mt
 
 # Binary target name (name of exe we're trying to build)
 TARGET = bgenerals.exe
