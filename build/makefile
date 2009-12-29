@@ -8,35 +8,56 @@ SHELL = /bin/sh
 .SUFFIXES:
 .SUFFIXES: .cpp .o
 
+#
 # Paths
+#
 prefix = ..
 srcdir = $(prefix)/src/
 objdir = $(prefix)/obj/
 boost_inc_dir = /usr/include/boost
 boost_lib_dir = /usr/lib
 
+#
 # Compiler related
+#
 CC      = g++
-CDEBUG = -g
+
+# -O0 : Reduce compilation time and make debugging produce 
+#       expected results (no-optimiation) [default]
+# -g : Produce debugging information
+CDEBUG = -O0 -g
+
 DEFS =  
-CFLAGS  = $(CDEBUG) -I$(srcdir) -I$(boost_inc_dir) $(DEFS) -Wall
-LDFLAGS  = -g -L$(boost_lib_dir)
+
+# Try and stack the deck in our favor, turn on many types of 
+# warnings, treat them as errors. 
+#
+# -Wall : Enable most warnings
+# -Wextra : Enable extra warnings
+# -Wshadow : Warn about shadow variables
+# -Werror : Treat warnings as failures
+# -MD : Dependency generation
+CFLAGS  = $(CDEBUG) -I$(srcdir) -I$(boost_inc_dir) $(DEFS) -Wall -Wextra -Wshadow -Werror -MD 
+LDFLAGS  = -L$(boost_lib_dir)
 
 # List of source files (including paths)
 SRCS =	$(srcdir)main.cpp \
-		$(srcdir)bgeneralthread.cpp
+		$(srcdir)byzgeneralthread.cpp \
+		$(srcdir)order.cpp
 
 # Replace the path in the source file listing with a separate directory for objects
 OBJS = $(addprefix $(objdir), $(notdir $(SRCS:.cpp=.o))) 
 
 # Libraries used
-LIBS = -lboost_thread-mt
+LIBS = -lboost_thread-mt -lboost_serialization-mt
 
 # Binary target name (name of exe we're trying to build)
-TARGET = bgenerals
+TARGET = byzgenerals
+TARGET_RUNTIME_ARGUMENTS = 4 1
 
-
+#
 # Targets
+#
 
 # Phony is good practice to keep target rules working despite poorly named file creations 
 # http://www.gnu.org/software/make/manual/make.html#Phony-Targets
@@ -55,12 +76,36 @@ $(TARGET): $(OBJS)
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 # Simple brute force rule to build obj/*.o based on their src/*.cpp counterparts
+# Dependency generation reference <http://make.paulandlesley.org/autodep.html>
+#
+# Also perform static analysis on all of the files, in another effort to 
+# stack the deck in our favor and catch errors early (Force our static 
+# analysis tool to return an error and halt the makefile when it finds 
+# problems).
 .PHONY: $(objdir)%.o
 $(objdir)%.o: $(srcdir)%.cpp
 	@mkdir -p $(dir $@)
 	@echo "============="
+	@echo -n "Static analysis: "
+	cppcheck -q --error-exitcode=1 $<
 	@echo "Compiling $<"
 	$(CC) $(CFLAGS) -c $< -o $@
+	@echo "Dependency generation $<"
+	@cp $(objdir)$*.d $(objdir)$*.P; \
+		sed -e 's/#.*//' -e 's/^[^:]*: *//' -e 's/ *\\$$//' \
+		-e '/^$$/ d' -e 's/$$/ :/' < $(objdir)$*.d >> $(objdir)$*.P; \
+		rm -f $(objdir)$*.d
+
+.PHONY: check
+check: all
+	@echo "============="
+	@echo "Performing valgrind analysis"
+	valgrind --track-origins=yes --leak-check=full $(TARGET) $(TARGET_RUNTIME_ARGUMENTS)
+
+# Add profiling info to build
+.PHONY: profile
+profile: CFLAGS += -pg
+profile: $(TARGET)
 
 # Do not add phony rule, we want TAGS to be checked to save a little build time.
 TAGS: $(SRCS)
@@ -71,18 +116,10 @@ TAGS: $(SRCS)
 # Use "make clean" to remove all of the support files.
 .PHONY: clean
 clean:
-	rm -f $(OBJS) $(TARGET) TAGS Makefile.depend
+	rm -f $(OBJS) $(OBJS:%.o=%.P) $(TARGET) TAGS
 
-# This automatically uses the 'makedepend' utility to add any
-# dependencies that our source files have, namely .h files.  This way,
-# if the .h files change, the code will be re-compiled.
-# <http://stackoverflow.com/questions/1500715/gnu-makefile-handling-dependencies>
-# makedepend generates the dependency list, perl regexp magic prepends Makefile.depend and 
-# corrects the paths to the .o files since we house them in a separate directory.
--include Makefile.depend
-Makefile.depend: $(SRCS)
-	@echo "============="
-	@echo "Creating Makefile.depend"
-	makedepend -f- $(SRCS) 2> /dev/null | \
-	perl -p -e "s/^(.*)\/(.*\.o:.*)/Makefile.depend $(subst /,\/,$(objdir))\2/" > Makefile.depend
+#
+# Include dependency rules / targets
+#
+-include $(OBJS:%.o=%.P)
 
