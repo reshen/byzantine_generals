@@ -1,0 +1,54 @@
+TODO
+- use lexical cast everywhere, including main()
+
+
+[ key : path | data : initial order/final order |
+  ...]
+
+
+while (numProcessed < sizeof(orderMap))
+{
+    /* process this order */
+
+    /* increase number processed */
+}
+
+
+interprocess vector : < path : string | data : initial order >
+
+thread private : map < key : path | data : initial order/final order >
+
+
+problems that need solving
+
+1.  each inbox needs a well known identifier such that all the other threads 
+can place data into it.
+- use message queues for ipc, name them G1, G2, etc.. 
+
+2.  we want to minimize overhead of transferring info between processes, 
+but we need to send at least <path | order>.  That needs to be placed in 
+private trees eventually for processing.
+
+3.  randomization of loyal / non-loyal genearls ; randomization of the orders
+that they send out?
+
+4.  byz general thread construction
+- list<string> of inboxes
+    converted to private list of message queue endpoints
+
+- index to my inbox
+
+- my loyalty
+
+
+5. byz general run loop
+
+    wait for orders
+        - pull order out of inbox, place received order in my tree
+
+    append my id, broadcast order to everyone else
+
+    check if order tree is complete
+        - true: propogate decision up
+        - false: start over
+
