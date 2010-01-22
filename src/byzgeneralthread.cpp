@@ -10,7 +10,8 @@
 
 byzgeneralthread::byzgeneralthread(const char* sharedMemName, const char* byzGeneralsNamesVector, unsigned int uniqueID, bool isLoyal, unsigned int totalNumGenerals):
     stopRequested_(false),
-    stopFinished_(false)
+    stopFinished_(false),
+    segment_(NULL)
 {
     using namespace boost::interprocess;
     using std::cout;
@@ -23,15 +24,17 @@ byzgeneralthread::byzgeneralthread(const char* sharedMemName, const char* byzGen
     try
     {
         //Create allocators
-        managed_shared_memory segment(open_only, sharedMemName);
-        shmCharAllocator charallocator(segment.get_segment_manager());
-        shmStringAllocator stringallocator(segment.get_segment_manager());
+        segment_ = new managed_shared_memory(open_only, sharedMemName);
+
+        // TODO
+        //shmCharAllocator charallocator(segment_->get_segment_manager());
+        //shmStringAllocator stringallocator(segment_->get_segment_manager());
 
         shmStringVector *namesVector = 
-            segment.find<shmStringVector>(byzGeneralsNamesVector).first;
+            segment_->find<shmStringVector>(byzGeneralsNamesVector).first;
 
         orderDeque_ = 
-            segment.find<shmOrderDeque>(((*namesVector)[uniqueID_]).c_str()).first; 
+            segment_->find<shmOrderDeque>(((*namesVector)[uniqueID_]).c_str()).first; 
 
         cout << "Unique ID : " << uniqueID_ << " / " << (*namesVector)[uniqueID_] <<  " orders? " << orderDeque_->size() << " &orderDeque : " << &orderDeque_ << endl; 
     }
@@ -65,10 +68,9 @@ void byzgeneralthread::start()
     cout << uniqueID_ << " " << loyal << " byzgeneralthread start()" << endl;
 
     assert(!thread_);
-    //thread_ = boost::shared_ptr<boost::thread>(new boost::thread(boost::bind(&byzgeneralthread::run, this)));
+    assert(segment_ != NULL);
 
-    boost::thread deep_thought_2(&byzgeneralthread::run, boost::ref(orderDeque_));
-
+    thread_ = boost::shared_ptr<boost::thread>(new boost::thread(boost::bind(&byzgeneralthread::run, this)));
 }
 
 void byzgeneralthread::stop()
@@ -85,14 +87,13 @@ void byzgeneralthread::stop()
     stopFinished_ = true;
 }
 
-void byzgeneralthread::run(shmOrderDeque *tmp)
+void byzgeneralthread::run()
 {
+    using namespace boost::interprocess;
     using std::cout;
     using std::endl;
 
-    cout << "Unique ID : " << uniqueID_ << " loyal? " << isLoyal_ <<  "&orderDeque : " << &orderDeque_ << endl;
-
-    cout << "Unique ID : " << uniqueID_ << " orders? " << tmp->size() << endl; 
+    cout << "Unique ID : " << uniqueID_ << " loyal? " << isLoyal_ <<  " orders size? " << orderDeque_->size() << endl; 
 
     while (!stopRequested_)
     {

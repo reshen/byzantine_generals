@@ -15,6 +15,7 @@
 
 #include <boost/thread/thread.hpp>
 #include <boost/shared_ptr.hpp>
+#include <boost/interprocess/managed_shared_memory.hpp>
 
 class byzgeneralthread
 {
@@ -48,9 +49,9 @@ class byzgeneralthread
         bool stopRequested_;
         bool stopFinished_;
         bool isLoyal_;
-        void run(shmOrderDeque *tmp);
+        void run();
 
-
+        boost::interprocess::managed_shared_memory *segment_;
         shmOrderDeque *orderDeque_;
 };
 
