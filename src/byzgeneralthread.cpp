@@ -1,55 +1,48 @@
-#include <iostream>
-
 #include "byzgeneralthread.h"
 #include "order.h"
+#include "sharedmemtypes.h"
 
-#include <boost/interprocess/shared_memory_object.hpp>
-#include <boost/lexical_cast.hpp>
+#include <boost/interprocess/ipc/message_queue.hpp>
+#include <boost/interprocess/managed_shared_memory.hpp>
+
 #include <iostream>
-#include <vector>
 #include <string>
 
-// TODO pitfals of using lots of namespaces
-//using namespace boost::interprocess;
-//using namespace boost;
-//using namespace std;
-
-byzgeneralthread::byzgeneralthread(const char* sharedMemName, unsigned int uniqueID, bool isLoyal, unsigned int totalNumGenerals):
+byzgeneralthread::byzgeneralthread(const char* sharedMemName, const char* byzGeneralsNamesVector, unsigned int uniqueID, bool isLoyal, unsigned int totalNumGenerals):
     stopRequested_(false),
     stopFinished_(false)
 {
     using namespace boost::interprocess;
+    using std::cout;
+    using std::endl;
 
     uniqueID_ = uniqueID;
     isLoyal_ = isLoyal;
     totalNumGenerals_ = totalNumGenerals;
 
-    //Open already created shared memory object.
-    shared_memory_object shm(open_only, sharedMemName, read_write);
-
-    //Map the second half of the memory
-    const int MEMSIZE = 10000;
-    mapped_region region
-        ( shm                   //Memory-mappable object
-          , read_write          //Access mode
-          , MEMSIZE * uniqueID  //Offset from the beginning of shm
-          , MEMSIZE             //Length of the region
-        );
-
-
-    // Check that memory was initialized to 1
-    char *mem = static_cast<char*>(region.get_address());
-    for(std::size_t i = 0; i < region.get_size(); ++i)
+    try
     {
-        if(*mem++ != 1)
-        {
-            assert(!"Unitialized memory!");
-        }
+        //Create allocators
+        managed_shared_memory segment(open_only, sharedMemName);
+        shmCharAllocator charallocator(segment.get_segment_manager());
+        shmStringAllocator stringallocator(segment.get_segment_manager());
+
+        shmStringVector *namesVector = 
+            segment.find<shmStringVector>(byzGeneralsNamesVector).first;
+
+        orderDeque_ = 
+            segment.find<shmOrderDeque>(((*namesVector)[uniqueID_]).c_str()).first; 
+
+        cout << "Unique ID : " << uniqueID_ << " / " << (*namesVector)[uniqueID_] <<  " orders? " << orderDeque_->size() << " &orderDeque : " << &orderDeque_ << endl; 
     }
-
-    // Initialize all the memory to 0 for our use.
-    std::memset(region.get_address(), 0, region.get_size());
-
+    catch(interprocess_exception& e)
+    {
+        cout << "Interprocess Exception: " << e.what() << endl;
+    }
+    catch(...)
+    {
+        cout << "Exception" <<  endl;
+    }
 }
 
 byzgeneralthread::~byzgeneralthread()
@@ -63,17 +56,27 @@ byzgeneralthread::~byzgeneralthread()
 
 void byzgeneralthread::start() 
 {
-    std::string loyal = isLoyal_ ? "Loyal" : "Traitor";
+    using std::string;
+    using std::cout;
+    using std::endl;
 
-    std::cout << uniqueID_ << " " << loyal << " byzgeneralthread start()" << std::endl;
+    string loyal = isLoyal_ ? "Loyal" : "Traitor";
+
+    cout << uniqueID_ << " " << loyal << " byzgeneralthread start()" << endl;
 
     assert(!thread_);
-    thread_ = boost::shared_ptr<boost::thread>(new boost::thread(boost::bind(&byzgeneralthread::run, this)));
+    //thread_ = boost::shared_ptr<boost::thread>(new boost::thread(boost::bind(&byzgeneralthread::run, this)));
+
+    boost::thread deep_thought_2(&byzgeneralthread::run, boost::ref(orderDeque_));
+
 }
 
 void byzgeneralthread::stop()
 {
-    std::cout << uniqueID_ << " byzgeneralthread stop()" << std::endl;
+    using std::cout;
+    using std::endl;
+
+    cout << uniqueID_ << " byzgeneralthread stop()" << endl;
 
     assert(thread_);
 
@@ -82,12 +85,37 @@ void byzgeneralthread::stop()
     stopFinished_ = true;
 }
 
-void byzgeneralthread::run()
+void byzgeneralthread::run(shmOrderDeque *tmp)
 {
+    using std::cout;
+    using std::endl;
+
+    cout << "Unique ID : " << uniqueID_ << " loyal? " << isLoyal_ <<  "&orderDeque : " << &orderDeque_ << endl;
+
+    cout << "Unique ID : " << uniqueID_ << " orders? " << tmp->size() << endl; 
+
     while (!stopRequested_)
     {
+        /*
+         *while (orderDeque_->size() > 0)
+         *{
+         *    [> We've received orders, lets process them now <]
+         *    cout << "Unique ID : " << uniqueID_ << " / Popping : " << (*orderDeque_)[0].communicationPath_ << endl; 
+         *    orderDeque_->pop_front();
+         *}
+         */
 #if 0
-        //std::cout << "hello world" << std::endl;
+        wait for orders
+            - pull order out of inbox, place received order in my tree
+
+        append my id, broadcast order to everyone else
+
+        check if order tree is complete
+            - true: propogate decision up
+            - false: start over
+
+
+        //cout << "hello world" << endl;
 
         if (uniqueID_ == RANK_COMMANDING_GENERAL)
         {
@@ -114,71 +142,4 @@ void byzgeneralthread::run()
         sleep(1);
     }
 } 
-
-void byzgeneralthread::sendOrder(unsigned int destinationID, order *orderToSend)
-{
-    // TODO 
-    destinationID++;
-    delete orderToSend;
-    orderToSend = NULL;
-#if 0
-    try
-    {
-        std::stringstream os;
-        //std::ofstream os("test");
-        boost::archive::text_oarchive out(os);
-
-        out << *orderToSend; 
-
-        //cout << "out " << os.str().c_str() << " length " << os.str().length() << endl;
-
-        const char *data = os.str().c_str();
-        //int len = os.str().length() * sizeof(char);
-        int len = strlen(data) * sizeof(char);
-
-        cout << "out " << data << " length " << len << endl;
-
-        communicationLines_.at(destinationID)->send(data, len, 0);
-
-        //os.close();
-    }
-    catch (boost::interprocess::interprocess_exception &ex)
-    {
-        std::cout << ex.what() << " send code " << ex.get_error_code() << std::endl;
-    }
-#endif
-}
-
-order *byzgeneralthread::recvOrder()
-{
-    order *receivedOrder = new order();
-
-#if 0
-    try
-    {
-        unsigned int priority = 0;
-        std::size_t recvd_size = 0;
-
-        // TODO 
-        char *data = (char *)calloc(sizeof(char), 1024);
-
-        // TODO 
-        communicationLines_.at(1)->receive(data, sizeof(char) * 1024, recvd_size, priority);
-
-        std::stringstream is(data);
-        boost::archive::text_iarchive in(is);
-        in >> *receivedOrder; 
-
-        cout << "Receieved order " << receivedOrder->initialOrder() << endl;
-
-        free(data);
-    }
-    catch (boost::interprocess::interprocess_exception &ex)
-    {
-        std::cout << ex.what() << "recv code " << ex.get_error_code() << std::endl;
-    }
-#endif
-
-    return receivedOrder;
-}
 

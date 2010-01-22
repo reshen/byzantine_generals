@@ -26,9 +26,12 @@
  */
 
 #include "byzgeneralthread.h"
+#include "sharedmemtypes.h"
+
+#include <boost/interprocess/ipc/message_queue.hpp>
 #include <boost/interprocess/managed_shared_memory.hpp>
-#include <boost/interprocess/allocators/node_allocator.hpp>
-#include <boost/interprocess/containers/map.hpp>
+#include <boost/interprocess/containers/string.hpp>
+#include <boost/lexical_cast.hpp>
 
 #include <iostream>
 
@@ -36,18 +39,21 @@
 #define NO_ERROR            (0)
 #define ERR_INVALID_INPUT   (1)
 
-/* Shared memory area name */
+/* Shared memory areas' names */
 const char* sharedMemName = "MySharedMemory";
+const char* byzGeneralsNamesVector = "Generals Names";
 
 int main(int argc, char** argv)
 {
     using namespace boost::interprocess;
+    using std::cout;
+    using std::endl;
 
     /* Safety check input */
     if (argc < 3)
     {
-        std::cout << "Invalid usage." << std::endl;
-        std::cout << "bgenerals.exe [total number of generals] [traitor generals]" << std::endl;
+        cout << "Invalid usage." << endl;
+        cout << "bgenerals.exe [total number of generals] [traitor generals]" << endl;
         return ERR_INVALID_INPUT;
     }
 
@@ -60,18 +66,18 @@ int main(int argc, char** argv)
      */
     const int totalNumGenerals = atoi(argv[1]);
     const int traitorGenerals = atoi(argv[2]);
-    std::cout << "Total number of generals (n): " << totalNumGenerals << std::endl;
-    std::cout << "Total number of traitor generals (t): " << traitorGenerals << std::endl;
+    cout << "Total number of generals (n): " << totalNumGenerals << endl;
+    cout << "Total number of traitor generals (t): " << traitorGenerals << endl;
 
-    std::cout << std::endl;
+    cout << endl;
 
     if ((3 * traitorGenerals + 1) <= totalNumGenerals)
     {
-        std::cout << "This problem is solvable." << std::endl;
+        cout << "This problem is solvable." << endl;
     }
     else
     {
-        std::cout << "This problem is NOT solvable." << std::endl << "We need at least (3t + 1) total generals, where t is the number of traitor generals in order to sove this problem!" << std::endl << "Exiting..." << std::endl;
+        cout << "This problem is NOT solvable." << endl << "We need at least (3t + 1) total generals, where t is the number of traitor generals in order to sove this problem!" << endl << "Exiting..." << endl;
 
         return ERR_INVALID_INPUT;
     }
@@ -81,91 +87,75 @@ int main(int argc, char** argv)
     /* Create shared memory inboxes */
     /* -------------------------------------------------------------------------------- */
 
-    //Shared memory front-end that is able to construct objects
-    //associated with a c-string. Erase previous shared memory with the name
-    //to be used and create the memory segment at the specified address and initialize resources
     shared_memory_object::remove(sharedMemName);
+
+    // TODO remove previous string vector / order vector
 
     try
     {
-        managed_shared_memory segment (create_only ,sharedMemName ,65536);
+        //Create allocators
+        managed_shared_memory segment(create_only, sharedMemName, 65536);
+        shmCharAllocator charallocator(segment.get_segment_manager());
+        shmStringAllocator stringallocator(segment.get_segment_manager());
+        shmOrderAllocator orderallocator(segment.get_segment_manager());
 
-        //Note that map<Key, MappedType>'s value_type is std::pair<const Key, MappedType>,
-        //so the allocator must allocate that pair.
-        typedef const char* KeyType;
-        typedef order* MappedType;
-        typedef std::pair<KeyType, MappedType> ValueType;
+        //Create a vector of strings in shared memory.
+        shmStringVector *namesVector = 
+            segment.construct<shmStringVector>(byzGeneralsNamesVector)(stringallocator);
 
-        //Alias an STL compatible allocator of for the map.
-        //This allocator will allow to place containers
-        //in managed shared memory segments
-        typedef allocator<ValueType, managed_shared_memory::segment_manager> 
-            ShmemAllocator;
+        /* Create a thread representing each byzantine general */
+        byzgeneralthread *ltGenerals[totalNumGenerals];
 
-        //Alias a map of ints that uses the previous STL-like allocator.
-        //Note that the third parameter argument is the ordering function
-        //of the map, just like with std::map, used to compare the keys.
-        typedef map<KeyType, MappedType, std::less<KeyType>, ShmemAllocator> MyMap;
+        for (int i = 0; i < totalNumGenerals; i++)
+        {
+            shmString byzGeneralName(charallocator);
+            byzGeneralName = (string("Byzantine General #").append(boost::lexical_cast<string>(i))).c_str();
+            namesVector->push_back(byzGeneralName);
 
-        //Initialize the shared memory STL-compatible allocator
-        ShmemAllocator alloc_inst (segment.get_segment_manager());
+            /* Construct a message queue for this general */
+            shmOrderDeque *orderDeque = segment.construct<shmOrderDeque>(byzGeneralName.c_str())(orderallocator); 
 
-        //Construct a shared memory map.
-        //Note that the first parameter is the comparison function,
-        //and the second one the allocator.
-        //This the same signature as std::map's constructor taking an allocator
-        MyMap *mymap = 
-            segment.construct<MyMap>("MyMap")      //object name
-            (std::less<KeyType>() //first  ctor parameter
-             ,alloc_inst);     //second ctor parameter
-        
+            if (!(strcmp(byzGeneralName.c_str(), "Byzantine General #2")))
+            {
+                order temp("1231", charallocator);
+                orderDeque->push_back(temp);
+            }
 
-        const char* foo = "Hello world";
+            cout << "orderDeque->size() " << orderDeque->size() << endl;
 
-        mymap->insert(std::pair<KeyType, MappedType>(foo, new order()));
+        }
 
+        for (int i = 0; i < totalNumGenerals; i++)
+        {
+            bool isLoyal = true;
+
+            if (i < traitorGenerals)
+            {
+                /* Set traitor general loyalty */
+                isLoyal = false;
+            }
+
+            /* Spin off general threads. */
+            ltGenerals[i] = new byzgeneralthread(sharedMemName, byzGeneralsNamesVector, i, isLoyal, totalNumGenerals);
+            ltGenerals[i]->start();
+        }
+
+        sleep(3);
+
+        for (int i = 0; i < totalNumGenerals; i++)
+        {
+            /* Shut down general threads. */
+            ltGenerals[i]->stop();
+            delete ltGenerals[i];
+            ltGenerals[i] = NULL;
+        }
     }
     catch(...)
     {
-        shared_memory_object::remove(sharedMemName);
-        throw;
+        cout << "Exception..." << endl;
     }
+
     shared_memory_object::remove(sharedMemName);
 
-
-
-    /* -------------------------------------------------------------------------------- */
-    /* END */
-    /* -------------------------------------------------------------------------------- */
-
-
-
-    /* Create a thread representing each byzantine general */
-    byzgeneralthread *ltGenerals[totalNumGenerals];
-
-    for (int i = 0; i < totalNumGenerals; i++)
-    {
-        bool isLoyal = true;
-
-        if (i < traitorGenerals)
-        {
-            /* Set traitor general loyalty */
-            isLoyal = false;
-        }
-
-        /* Spin off general threads. */
-        ltGenerals[i] = new byzgeneralthread(sharedMemName, i, isLoyal, totalNumGenerals);
-        ltGenerals[i]->start();
-    }
-
-    sleep(3);
-
-    for (int i = 0; i < totalNumGenerals; i++)
-    {
-        /* Shut down general threads. */
-        ltGenerals[i]->stop();
-        delete ltGenerals[i];
-        ltGenerals[i] = NULL;
-    }
     return NO_ERROR;
 }
